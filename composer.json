@@ -1,0 +1,16 @@
+{
+    "name": "xentixar/mantrajna-test",
+    "license": "MIT",
+    "autoload": {
+        "psr-4": {
+            "Xentixar\\MantrajnaTest\\": "src/"
+        }
+    },
+    "authors": [
+        {
+            "name": "xentixar",
+            "email": "xentixar@gmail.com"
+        }
+    ],
+    "require": {}
+}
