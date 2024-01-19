@@ -45,6 +45,10 @@ $mantrajna->where(['age', '>', 25]);
 // Sort the data based on the 'name' column in descending order
 $mantrajna->sort('name', 'DESC');
 
+// Execute all the instruction
+// Before using print or get you have to call run function to save all the changes.
+$mantrajna->run();
+
 // Print the resulting data
 $mantrajna->print();
 ```
