@@ -624,7 +624,7 @@ class Unicorn
                     $value = (array)$value;
                     $value = date('Y-m-d', strtotime($value['date']));
                 }
-                printf("%-30s", $value);
+                printf("%-30s", is_array($value) ? json_encode($value) : $value);
             }
             echo PHP_EOL;
         }
