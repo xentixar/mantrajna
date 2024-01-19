@@ -1,9 +1,9 @@
 {
-    "name": "xentixar/mantrajna-test",
+    "name": "xentixar/mantrajna",
     "license": "MIT",
     "autoload": {
         "psr-4": {
-            "Xentixar\\MantrajnaTest\\": "src/"
+            "Xentixar\\Mantrajna\\": "src/"
         }
     },
     "authors": [

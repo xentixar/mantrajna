@@ -1,9 +1,11 @@
 <?php
 
-namespace Xentixar\MantrajnaTest;
+namespace Xentixar\Mantrajna;
 
+use DateTime;
 use DateTimeImmutable;
 use Error;
+use SimpleXMLElement;
 use TypeError;
 
 class Column
@@ -56,7 +58,7 @@ class Unicorn
         $this->total_row_count = 0;
         $this->available_column_types = ['datetime', 'string', 'int', 'double'];
         $this->conditions = [];
-        $this->condition_type = "and";
+        $this->condition_type = "or";
         $this->applied_format = false;
     }
 
@@ -69,7 +71,7 @@ class Unicorn
         $this->total_row_count = 0;
         $this->available_column_types = ['datetime', 'string', 'int', 'double'];
         $this->conditions = [];
-        $this->condition_type = "and";
+        $this->condition_type = "or";
         $this->applied_format = false;
     }
 
@@ -128,6 +130,11 @@ class Unicorn
                             $count++;
                         }
                         break;
+                    case 'like':
+                        if (preg_match($condition->value, $value)) {
+                            $count++;
+                            break;
+                        }
                     default:
                         throw new Error("Operator $operator not found!");
                 }
@@ -138,7 +145,7 @@ class Unicorn
                     $temp_data[] = $data;
                 }
             } elseif ($this->condition_type === 'or') {
-                if ($count === 1) {
+                if ($count) {
                     $temp_data[] = $data;
                 }
             }
@@ -167,6 +174,69 @@ class Unicorn
         } else {
             throw new Error('Expected file type csv, ' . pathinfo($file, PATHINFO_EXTENSION) . " given!");
         }
+        $this->__setDefaultColumnInfo($temp_columns);
+    }
+
+    public function readJson(string $file)
+    {
+        $this->__clearData();
+        $json_data = null;
+        $temp_data = [];
+        $temp_columns = [];
+        $data = [];
+        if (pathinfo($file, PATHINFO_EXTENSION) === 'json') {
+            $temp_data = [];
+            $file_contents = file_get_contents($file);
+            $json_data = json_decode($file_contents, true);
+            $temp_data = $json_data;
+        } else {
+            throw new Error('Expected file type json, ' . pathinfo($file, PATHINFO_EXTENSION) . " given!");
+        }
+
+        foreach ($temp_data[0] as $column_name => $value) {
+            $temp_columns[] = $column_name;
+        }
+
+        foreach ($temp_data as $row_key => $row) {
+            foreach ($row as $column_name => $value) {
+                if (array_search($column_name, $temp_columns) !== false) {
+                    $column_index = array_search($column_name, $temp_columns);
+                    $data[$row_key][$column_index] = $value;
+                }
+            }
+        }
+
+        $this->initial_data = $data;
+        $this->__setDefaultColumnInfo($temp_columns);
+    }
+
+    public function readXml(string $file)
+    {
+        $this->__clearData();
+        $temp_data = [];
+        $temp_columns = [];
+        $data = [];
+        if (pathinfo($file, PATHINFO_EXTENSION) === 'xml') {
+            $xml = simplexml_load_file($file);
+            $temp_data = json_decode(json_encode($xml), true);
+        } else {
+            throw new Error('Expected file type xml, ' . pathinfo($file, PATHINFO_EXTENSION) . " given!");
+        }
+
+        foreach ($temp_data['row'][0] as $column_name => $value) {
+            $temp_columns[] = $column_name;
+        }
+
+        foreach ($temp_data['row'] as $row_key => $row) {
+            foreach ($row as $column_name => $value) {
+                if (array_search($column_name, $temp_columns) !== false) {
+                    $column_index = array_search($column_name, $temp_columns);
+                    $data[$row_key][$column_index] = $value;
+                }
+            }
+        }
+
+        $this->initial_data = $data;
         $this->__setDefaultColumnInfo($temp_columns);
     }
 
@@ -239,6 +309,7 @@ class Unicorn
                             }
                             $this->modified_data[$row_key][$column_key] = $updated_value;
                             $this->columns[$column_key]->column_type = $exploded_info[1];
+                            $this->columns[$column_key]->column_format = $exploded_info[2];
                         } elseif ($exploded_info[1] === 'int') {
                             $updated_value = (int)$value;
                             $this->modified_data[$row_key][$column_key] = $updated_value;
@@ -358,6 +429,68 @@ class Unicorn
         return $this;
     }
 
+    public function update(array $columns, array $values): self
+    {
+        if (count($columns) !== count($values)) {
+            throw new Error("Columns and values count doesn't match");
+        }
+        foreach ($columns as $column) {
+            $found = false;
+            $found_column_index = [];
+            foreach ($this->columns as $key => $col) {
+                if ($col->column_name === $column) {
+                    $found = true;
+                    $found_column_index[] = $key;
+                    break;
+                }
+            }
+            if (!$found) {
+                throw new Error("Column $column not found");
+            }
+        }
+
+        if (!$this->modified_data && $this->applied_format === false) {
+            $this->modified_data = $this->initial_data;
+        }
+
+        foreach ($this->modified_data as $row_key => $row) {
+            foreach ($row as $column_key => $value) {
+                if (array_search($column_key, $found_column_index) !== false) {
+                    $column = $this->columns[$column_key];
+                    $index = array_search($column->column_name, $columns);
+                    if ($column->column_type === 'datetime') {
+                        if ($values[$index] instanceof DateTimeImmutable || $values[$index] instanceof DateTime) {
+                            $updated_value = $values[$index];
+                        } else {
+                            $updated_value = DateTimeImmutable::createFromFormat($column->column_format, $values[$index]);
+                            if ($updated_value === false) {
+                                $column_name = $this->columns[$column_key]->column_name;
+                                throw new TypeError("Column $column_name can't be converted to datetime");
+                            }
+                            $this->modified_data[$row_key][$column_key] = $updated_value;
+                        }
+                    } else {
+                        $this->modified_data[$row_key][$column_key] = $values[$index];
+                    }
+                }
+            }
+        }
+        $this->applied_format = true;
+        return $this;
+    }
+
+    public function delete(): self
+    {
+
+        if (!$this->modified_data && $this->applied_format === false) {
+            $this->modified_data = $this->initial_data;
+        }
+        foreach ($this->modified_data as $row_key => $row) {
+            unset($this->modified_data[$row_key]);
+        }
+        return $this;
+    }
+
     public function any(): self
     {
         $this->condition_type = 'or';
@@ -393,6 +526,62 @@ class Unicorn
             $this->columns[$column_key]->column_type = "string";
             $this->columns[$column_key]->column_format = null;
         }
+    }
+
+    public function dumpJson(string $file): void
+    {
+        $data = [];
+        foreach ($this->final_data as $row_key => $row) {
+            foreach ($row as $column_key => $value) {
+                $column_index = $this->columns[$column_key]->column_name;
+                $data[$row_key][$column_index] = $value;
+            }
+        }
+        $jsonString = json_encode($data, JSON_PRETTY_PRINT);
+        file_put_contents($file, $jsonString);
+    }
+
+    public function dumpXml(string $file): void
+    {
+        $data = [];
+        foreach ($this->final_data as $row_key => $row) {
+            foreach ($row as $column_key => $value) {
+                $column_index = $this->columns[$column_key]->column_name;
+                $data[$row_key][$column_index] = $value;
+            }
+        }
+
+        $newXml = new SimpleXMLElement('<root></root>');
+        foreach ($data as $item) {
+            $row = $newXml->addChild('row');
+            foreach ($item as $key => $value) {
+                $row->addChild($key, $value);
+            }
+        }
+        $newXml->asXML($file);
+    }
+
+    public function dumpCsv(string $file, string $delimeter = ','): void
+    {
+        $data = [];
+        foreach ($this->final_data as $row_key => $row) {
+            foreach ($row as $column_key => $value) {
+                $column_index = $this->columns[$column_key]->column_name;
+                $data[$row_key][$column_index] = $value;
+            }
+        }
+
+        $column_names = [];
+        foreach ($this->columns as $column) {
+            $column_names[] = $column->column_name;
+        }
+
+        $csvFile = fopen($file, 'w');
+        fputcsv($csvFile, $column_names, $delimeter);
+        foreach ($data as $row) {
+            fputcsv($csvFile, $row);
+        }
+        fclose($csvFile);
     }
 
     public function get(int $row_count = 10): array
